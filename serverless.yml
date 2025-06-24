@@ -1,0 +1,38 @@
+service: aws-fullstack-dummy
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs14.x
+  region: us-east-1
+  stage: dev
+  environment:
+    S3_BUCKET: ${self:custom.s3Bucket}
+    DB_URI: ${self:custom.mongoUri}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - s3:*
+      Resource: "arn:aws:s3:::${self:custom.s3Bucket}/*"
+
+custom:
+  s3Bucket: dummy-website-bucket-${self:provider.stage}
+  mongoUri: ${env:MONGO_URI}
+
+functions:
+  api:
+    handler: backend/server.handler
+    events:
+      - httpApi: '*'
+
+resources:
+  Resources:
+    S3Bucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.s3Bucket}
+        AccessControl: PublicRead
+        WebsiteConfiguration:
+          IndexDocument: index.html
+          ErrorDocument: error.html
