@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
   // Load items from database
-  fetch('/items')
+  fetch('http://3.86.240.156:3000/items')
     .then(res => res.json())
     .then(items => {
       const list = document.getElementById('items-list');
@@ -13,28 +13,43 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Add new item
   document.getElementById('item-form').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const name = document.getElementById('item-name').value;
-    const description = document.getElementById('item-desc').value;
-    
-    fetch('/items', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ name, description })
+  e.preventDefault();
+  const name = document.getElementById('item-name').value;
+  const description = document.getElementById('item-desc').value;
+
+  console.log(name, description);
+  
+  
+  // PERBAIKAN 1: Gunakan full URL
+  fetch('http://3.86.240.156:3000/items', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ 
+      name: name, 
+      description: description 
     })
-    .then(res => res.json())
-    .then(item => {
-      const li = document.createElement('li');
-      li.textContent = `${item.name}: ${item.description}`;
-      document.getElementById('items-list').appendChild(li);
-      e.target.reset();
-    });
+  })
+  .then(res => {
+    if (!res.ok) throw new Error(res.statusText);
+    return res.json();
+  })
+  .then(item => {
+    const li = document.createElement('li');
+    // PERBAIKAN 2: Tambahkan validasi
+    li.textContent = `${item.name || 'No name'}: ${item.description || 'No description'}`;
+    document.getElementById('items-list').appendChild(li);
+    e.target.reset();
+  })
+  .catch(error => {
+    console.error('Error:', error);
+    alert('Gagal menyimpan item: ' + error.message);
   });
+});
 
   // Load files from S3
-  fetch('/files')
+  fetch('/items')
     .then(res => res.json())
     .then(files => {
       const list = document.getElementById('files-list');
