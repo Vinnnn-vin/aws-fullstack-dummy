@@ -19,7 +19,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   console.log(name, description);
   
-  
   // PERBAIKAN 1: Gunakan full URL
   fetch('http://3.86.240.156:3000/items', {
     method: 'POST',
