@@ -49,7 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
   // Load files from S3
-  fetch('/items')
+  fetch('http://3.86.240.156:3000/items')
     .then(res => res.json())
     .then(files => {
       const list = document.getElementById('files-list');
@@ -66,7 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const filename = document.getElementById('filename').value;
     const content = document.getElementById('content').value;
     
-    fetch('/upload', {
+    fetch('/http://3.86.240.156:3000/upload', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
