@@ -13,8 +13,23 @@ const dynamoDB = new AWS.DynamoDB.DocumentClient();
 const TABLE_NAME = 'DummyItems';
 
 // Enable CORS
+// app.use((req, res, next) => {
+//   res.header('Access-Control-Allow-Origin', 'http://dummy-website-aws.s3-website-us-east-1.amazonaws.com');
+//   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+//   res.header('Access-Control-Allow-Headers', 'Content-Type');
+//   next();
+// });
+
+// Di bagian CORS middleware (baris 12-16), ubah menjadi:
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', 'http://dummy-website-aws.s3-website-us-east-1.amazonaws.com');
+  const allowedOrigins = [
+    'http://dummy-website-aws.s3-website-us-east-1.amazonaws.com',
+    'http://dummy-website-alb-2063630277.us-east-1.elb.amazonaws.com' // Domain ALB Anda
+  ];
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type');
   next();
