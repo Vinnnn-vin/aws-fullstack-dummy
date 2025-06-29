@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
   // Load items from database
-  fetch('http://44.208.28.4:3000/items')
+  fetch('http://18.212.71.212:3000/items')
     .then(res => res.json())
     .then(items => {
       const list = document.getElementById('items-list');
@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
   console.log(name, description);
   
   // PERBAIKAN 1: Gunakan full URL
-  fetch('http://44.208.28.4:3000/items', {
+  fetch('http://18.212.71.212:3000/items', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
   // Load files from S3
-  fetch('http://44.208.28.4:3000/items')
+  fetch('http://18.212.71.212:3000/items')
     .then(res => res.json())
     .then(files => {
       const list = document.getElementById('files-list');
