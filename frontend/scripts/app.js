@@ -47,37 +47,37 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-  // Load files from S3
-  fetch('http://18.212.71.212:3000/items')
-    .then(res => res.json())
-    .then(files => {
-      const list = document.getElementById('files-list');
-      files.forEach(file => {
-        const li = document.createElement('li');
-        li.textContent = file.Key;
-        list.appendChild(li);
-      });
-    });
+  // // Load files from S3
+  // fetch('http://18.212.71.212:3000/items')
+  //   .then(res => res.json())
+  //   .then(files => {
+  //     const list = document.getElementById('files-list');
+  //     files.forEach(file => {
+  //       const li = document.createElement('li');
+  //       li.textContent = file.Key;
+  //       list.appendChild(li);
+  //     });
+  //   });
 
-  // Upload file to S3
-  document.getElementById('upload-form').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const filename = document.getElementById('filename').value;
-    const content = document.getElementById('content').value;
+  // // Upload file to S3
+  // document.getElementById('upload-form').addEventListener('submit', (e) => {
+  //   e.preventDefault();
+  //   const filename = document.getElementById('filename').value;
+  //   const content = document.getElementById('content').value;
     
-    fetch('/http://44.208.28.4:3000/upload', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ filename, content })
-    })
-    .then(res => res.json())
-    .then(file => {
-      const li = document.createElement('li');
-      li.textContent = file.Key;
-      document.getElementById('files-list').appendChild(li);
-      e.target.reset();
-    });
-  });
+  //   fetch('/http://18.212.71.212:3000/upload', {
+  //     method: 'POST',
+  //     headers: {
+  //       'Content-Type': 'application/json'
+  //     },
+  //     body: JSON.stringify({ filename, content })
+  //   })
+  //   .then(res => res.json())
+  //   .then(file => {
+  //     const li = document.createElement('li');
+  //     li.textContent = file.Key;
+  //     document.getElementById('files-list').appendChild(li);
+  //     e.target.reset();
+  //   });
+  // });
 });
