@@ -10,6 +10,7 @@ AWS.config.update({
 });
 
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
+const sns = new AWS.SNS();
 const TABLE_NAME = 'DummyItems';
 const SNS_TOPIC_ARN = 'arn:aws:sns:us-east-1:697771866556:ItemDeletionNotifications';
 
