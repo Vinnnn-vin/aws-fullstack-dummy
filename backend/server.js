@@ -117,69 +117,60 @@ app.post('/items', async (req, res) => {
 
 app.delete('/items/:id', async (req, res) => {
   if (!req.params.id) {
-    return res.status(400).json({ 
-      success: false,
-      error: 'Item ID is required' 
-    });
+    return res.status(400).json({ error: 'Item ID is required' });
   }
 
+  const params = {
+    TableName: TABLE_NAME,
+    Key: { id: req.params.id },
+    ReturnValues: 'ALL_OLD'
+  };
+
   try {
-    // 1. Cek item exist terlebih dahulu
-    const getParams = {
-      TableName: TABLE_NAME,
-      Key: { id: req.params.id }
-    };
+    const data = await dynamoDB.delete(params).promise();
     
-    const existingItem = await dynamoDB.get(getParams).promise();
-    
-    if (!existingItem.Item) {
-      return res.status(404).json({ 
-        success: false,
-        error: 'Item not found' 
-      });
+    if (!data.Attributes) {
+      return res.status(404).json({ error: 'Item not found' });
     }
 
-    // 2. Hapus item
-    const deleteParams = {
-      TableName: TABLE_NAME,
-      Key: { id: req.params.id },
-      ReturnValues: 'ALL_OLD'
+    // Bagian tambahan untuk SNS notification
+    const deletedItem = data.Attributes;
+    const snsParams = {
+      TopicArn: SNS_TOPIC_ARN,
+      Subject: `Item Deleted: ${deletedItem.name || deletedItem.id}`,
+      Message: JSON.stringify({
+        event: 'ITEM_DELETED',
+        id: deletedItem.id,
+        name: deletedItem.name,
+        timestamp: new Date().toISOString()
+      }, null, 2),
+      MessageAttributes: {
+        'service': { DataType: 'String', StringValue: 'item-service' }
+      }
     };
-    
-    const result = await dynamoDB.delete(deleteParams).promise();
-    const deletedItem = result.Attributes;
 
-    // 3. Kirim notifikasi SNS
-    if (SNS_TOPIC_ARN) {
-      const snsParams = {
-        TopicArn: SNS_TOPIC_ARN,
-        Subject: `Item Deleted: ${deletedItem.name || deletedItem.id}`,
-        Message: `Item berikut telah dihapus:\n\n` +
-                 `ID: ${deletedItem.id}\n` +
-                 `Nama: ${deletedItem.name || 'N/A'}\n` +
-                 `Deskripsi: ${deletedItem.description || 'N/A'}\n` +
-                 `Dihapus pada: ${new Date().toISOString()}\n\n` +
-                 `Detail lengkap:\n${JSON.stringify(deletedItem, null, 2)}`,
-        MessageStructure: 'string'
-      };
-
-      await sns.publish(snsParams).promise();
-      console.log('Notifikasi SNS terkirim untuk item yang dihapus');
-    }
-
-    // 4. Return response
-    res.json({
-      success: true,
-      data: deletedItem,
-      message: 'Item deleted successfully'
+    // Kirim notifikasi dan log hasilnya
+    const snsResponse = await sns.publish(snsParams).promise();
+    console.log('SNS Notification Sent:', {
+      MessageId: snsResponse.MessageId,
+      ItemId: deletedItem.id
     });
-    
+
+    res.json({ 
+      message: 'Item deleted successfully',
+      deletedItem: deletedItem,
+      snsMessageId: snsResponse.MessageId // Tambahkan ID notifikasi ke response
+    });
+
   } catch (err) {
-    console.error('Delete error:', err);
+    console.error('Error:', {
+      operation: 'delete_item',
+      error: err.message,
+      stack: err.stack
+    });
     res.status(500).json({ 
-      success: false,
       error: 'Failed to delete item',
-      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+      details: err.message 
     });
   }
 });
