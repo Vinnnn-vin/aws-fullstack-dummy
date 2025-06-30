@@ -12,25 +12,17 @@ AWS.config.update({
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
 const TABLE_NAME = 'DummyItems';
 
-// Enable CORS
-// app.use((req, res, next) => {
-//   res.header('Access-Control-Allow-Origin', 'http://dummy-website-aws.s3-website-us-east-1.amazonaws.com');
-//   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-//   res.header('Access-Control-Allow-Headers', 'Content-Type');
-//   next();
-// });
-
-// Di bagian CORS middleware (baris 12-16), ubah menjadi:
+// CORS middleware
 app.use((req, res, next) => {
   const allowedOrigins = [
     'http://dummy-website-aws.s3-website-us-east-1.amazonaws.com',
-    'http://dummy-website-alb-2063630277.us-east-1.elb.amazonaws.com' // Domain ALB Anda
+    'http://dummy-website-alb-2063630277.us-east-1.elb.amazonaws.com'
   ];
   const origin = req.headers.origin;
   if (allowedOrigins.includes(origin)) {
     res.header('Access-Control-Allow-Origin', origin);
   }
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type');
   next();
 });
@@ -42,7 +34,7 @@ app.get('/', (req, res) => {
   res.send('Backend is running');
 });
 
-// Get all items
+// Get all items - modified for table structure
 app.get('/items', async (req, res) => {
   const params = {
     TableName: TABLE_NAME
@@ -50,36 +42,75 @@ app.get('/items', async (req, res) => {
 
   try {
     const data = await dynamoDB.scan(params).promise();
-    res.json(data.Items || []);
+    // Format data untuk tabel dengan menyertakan ID untuk operasi edit/hapus
+    const items = (data.Items || []).map(item => ({
+      id: item.id,
+      name: item.name || '',
+      description: item.description || '',
+      createdAt: item.createdAt || ''
+    }));
+    res.json(items);
   } catch (err) {
     console.error('DynamoDB error:', err);
     res.status(500).json({ error: 'Failed to fetch items' });
   }
 });
 
-// Add new item
+// Add new item - modified to return complete item data
 app.post('/items', async (req, res) => {
-  // Validasi input
   if (!req.body.name) {
-    return res.status(400).json({ error: 'Nama harus diisi' });
+    return res.status(400).json({ error: 'Item name is required' });
   }
+
+  const newItem = {
+    id: Date.now().toString(),
+    name: req.body.name,
+    description: req.body.description || '',
+    createdAt: new Date().toISOString()
+  };
 
   const params = {
     TableName: TABLE_NAME,
-    Item: {
-      id: Date.now().toString(),
-      name: req.body.name,  // Pastikan field name ada
-      description: req.body.description || '',  // Default value jika kosong
-      createdAt: new Date().toISOString()
-    }
+    Item: newItem
   };
 
   try {
     await dynamoDB.put(params).promise();
-    res.status(201).json(params.Item); // Kirim kembali data yang disimpan
+    res.status(201).json(newItem);
   } catch (err) {
     console.error('DynamoDB error:', err);
-    res.status(500).json({ error: 'Gagal menyimpan data' });
+    res.status(500).json({ error: 'Failed to save item' });
+  }
+});
+
+// Add new endpoint for item operations
+// Perbaikan endpoint DELETE di server.js
+app.delete('/items/:id', async (req, res) => {
+  // Validasi ID
+  if (!req.params.id) {
+    return res.status(400).json({ error: 'Item ID is required' });
+  }
+
+  const params = {
+    TableName: TABLE_NAME,
+    Key: {
+      id: req.params.id
+    },
+    ReturnValues: 'ALL_OLD' // Mengembalikan data yang dihapus
+  };
+
+  try {
+    const data = await dynamoDB.delete(params).promise();
+    if (!data.Attributes) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+    res.json({ 
+      message: 'Item deleted successfully',
+      deletedItem: data.Attributes 
+    });
+  } catch (err) {
+    console.error('DynamoDB error:', err);
+    res.status(500).json({ error: 'Failed to delete item', details: err.message });
   }
 });
 

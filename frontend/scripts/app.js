@@ -1,83 +1,125 @@
-document.addEventListener('DOMContentLoaded', () => {
-  // Load items from database
-  fetch('http://18.212.71.212:3000/items')
-    .then(res => res.json())
-    .then(items => {
-      const list = document.getElementById('items-list');
-      items.forEach(item => {
-        const li = document.createElement('li');
-        li.textContent = `${item.name}: ${item.description}`;
-        list.appendChild(li);
-      });
+document.addEventListener("DOMContentLoaded", () => {
+  const itemsTableBody = document.getElementById("items-list");
+  const itemForm = document.getElementById("item-form");
+
+  // Function to render items in the table
+  function renderItems(items) {
+    itemsTableBody.innerHTML = "";
+    items.forEach((item) => {
+      const row = document.createElement("tr");
+
+      // Name cell
+      const nameCell = document.createElement("td");
+      nameCell.textContent = item.name || "No name";
+      row.appendChild(nameCell);
+
+      // Description cell
+      const descCell = document.createElement("td");
+      descCell.textContent = item.description || "No description";
+      row.appendChild(descCell);
+
+      // Actions cell
+      const actionsCell = document.createElement("td");
+
+      // Delete button
+      const deleteBtn = document.createElement("button");
+      deleteBtn.textContent = "Delete";
+      deleteBtn.className = "delete-btn";
+      deleteBtn.addEventListener("click", () => deleteItem(item.id));
+
+      actionsCell.appendChild(deleteBtn);
+      row.appendChild(actionsCell);
+
+      // Set data-id attribute for reference
+      row.setAttribute("data-id", item.id);
+
+      itemsTableBody.appendChild(row);
     });
+  }
 
-  // Add new item
-  document.getElementById('item-form').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const name = document.getElementById('item-name').value;
-  const description = document.getElementById('item-desc').value;
+  // Function to fetch all items
+  function fetchItems() {
+    fetch("http://3.83.52.143:3000/items")
+      .then((res) => {
+        if (!res.ok) throw new Error("Network response was not ok");
+        return res.json();
+      })
+      .then(renderItems)
+      .catch((error) => {
+        console.error("Error fetching items:", error);
+        alert("Failed to load items: " + error.message);
+      });
+  }
 
-  console.log(name, description);
-  
-  // PERBAIKAN 1: Gunakan full URL
-  fetch('http://18.212.71.212:3000/items', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ 
-      name: name, 
-      description: description 
+  // Function to add new item
+  function addItem(name, description) {
+    fetch("http://3.83.52.143:3000/items", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: name,
+        description: description,
+      }),
     })
-  })
-  .then(res => {
-    if (!res.ok) throw new Error(res.statusText);
-    return res.json();
-  })
-  .then(item => {
-    const li = document.createElement('li');
-    // PERBAIKAN 2: Tambahkan validasi
-    li.textContent = `${item.name || 'No name'}: ${item.description || 'No description'}`;
-    document.getElementById('items-list').appendChild(li);
-    e.target.reset();
-  })
-  .catch(error => {
-    console.error('Error:', error);
-    alert('Gagal menyimpan item: ' + error.message);
+      .then((res) => {
+        if (!res.ok) throw new Error(res.statusText);
+        return res.json();
+      })
+      .then(() => {
+        fetchItems(); // Refresh the table
+        itemForm.reset();
+      })
+      .catch((error) => {
+        console.error("Error:", error);
+        alert("Failed to save item: " + error.message);
+      });
+  }
+
+  // Function to delete item
+  function deleteItem(itemId) {
+    if (!confirm("Are you sure you want to delete this item?")) return;
+
+    fetch(`http://3.83.52.143:3000/items/${itemId}`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    })
+      .then((res) => {
+        if (!res.ok) {
+          return res.json().then((err) => {
+            throw new Error(err.error || "Failed to delete");
+          });
+        }
+        return res.json();
+      })
+      .then(() => {
+        // Hapus baris dari tabel tanpa perlu refresh seluruh halaman
+        const row = document.querySelector(`tr[data-id="${itemId}"]`);
+        if (row) row.remove();
+      })
+      .catch((error) => {
+        console.error("Delete error:", error);
+        alert("Delete failed: " + error.message);
+      });
+  }
+
+  // Form submission handler
+  itemForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = document.getElementById("item-name").value.trim();
+    const description = document.getElementById("item-desc").value.trim();
+
+    if (!name) {
+      alert("Item name is required");
+      return;
+    }
+
+    addItem(name, description);
   });
-});
 
-  // // Load files from S3
-  // fetch('http://18.212.71.212:3000/items')
-  //   .then(res => res.json())
-  //   .then(files => {
-  //     const list = document.getElementById('files-list');
-  //     files.forEach(file => {
-  //       const li = document.createElement('li');
-  //       li.textContent = file.Key;
-  //       list.appendChild(li);
-  //     });
-  //   });
-
-  // // Upload file to S3
-  // document.getElementById('upload-form').addEventListener('submit', (e) => {
-  //   e.preventDefault();
-  //   const filename = document.getElementById('filename').value;
-  //   const content = document.getElementById('content').value;
-    
-  //   fetch('/http://18.212.71.212:3000/upload', {
-  //     method: 'POST',
-  //     headers: {
-  //       'Content-Type': 'application/json'
-  //     },
-  //     body: JSON.stringify({ filename, content })
-  //   })
-  //   .then(res => res.json())
-  //   .then(file => {
-  //     const li = document.createElement('li');
-  //     li.textContent = file.Key;
-  //     document.getElementById('files-list').appendChild(li);
-  //     e.target.reset();
-  //   });
-  // });
+  // Initial load of items
+  fetchItems();
 });
