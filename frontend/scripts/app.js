@@ -77,8 +77,8 @@ document.addEventListener("DOMContentLoaded", () => {
       });
   }
 
-  // Function to delete item
-    function deleteItem(itemId) {
+  // Function to delete item - diperbarui
+  function deleteItem(itemId) {
     if (!confirm("Are you sure you want to delete this item?")) return;
 
     fetch(`http://3.83.52.143:3000/items/${itemId}`, {
@@ -87,18 +87,22 @@ document.addEventListener("DOMContentLoaded", () => {
         "Content-Type": "application/json",
       },
     })
-      .then((res) => {
+      .then(async (res) => {
+        const data = await res.json();
+
         if (!res.ok) {
-          return res.json().then((err) => {
-            throw new Error(err.error || "Failed to delete");
-          });
+          // Jika response tidak ok, gunakan error message dari server
+          throw new Error(
+            data.error || data.message || "Failed to delete item"
+          );
         }
-        return res.json();
-      })
-      .then(() => {
-        // Hapus baris dari tabel tanpa perlu refresh seluruh halaman
+
+        // Hapus baris dari tabel
         const row = document.querySelector(`tr[data-id="${itemId}"]`);
         if (row) row.remove();
+
+        // Tampilkan notifikasi sukses
+        alert("Item deleted successfully!");
       })
       .catch((error) => {
         console.error("Delete error:", error);

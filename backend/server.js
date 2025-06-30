@@ -115,9 +115,14 @@ app.post('/items', async (req, res) => {
 //   }
 // });
 
+// Enhanced DELETE endpoint
 app.delete('/items/:id', async (req, res) => {
-  if (!req.params.id) {
-    return res.status(400).json({ error: 'Item ID is required' });
+  // Validasi ID
+  if (!req.params.id || typeof req.params.id !== 'string') {
+    return res.status(400).json({ 
+      success: false,
+      error: 'Valid item ID is required' 
+    });
   }
 
   const params = {
@@ -130,47 +135,47 @@ app.delete('/items/:id', async (req, res) => {
     const data = await dynamoDB.delete(params).promise();
     
     if (!data.Attributes) {
-      return res.status(404).json({ error: 'Item not found' });
+      return res.status(404).json({ 
+        success: false,
+        error: 'Item not found' 
+      });
+    }
+    
+    // Kirim notifikasi SNS jika diperlukan
+    if (SNS_TOPIC_ARN) {
+      const snsParams = {
+        TopicArn: SNS_TOPIC_ARN,
+        Subject: `Item Deleted: ${data.Attributes.name || data.Attributes.id}`,
+        Message: JSON.stringify({
+          event: 'ITEM_DELETED',
+          item: data.Attributes,
+          timestamp: new Date().toISOString()
+        })
+      };
+      await sns.publish(snsParams).promise();
     }
 
-    // Bagian tambahan untuk SNS notification
-    const deletedItem = data.Attributes;
-    const snsParams = {
-      TopicArn: SNS_TOPIC_ARN,
-      Subject: `Item Deleted: ${deletedItem.name || deletedItem.id}`,
-      Message: JSON.stringify({
-        event: 'ITEM_DELETED',
-        id: deletedItem.id,
-        name: deletedItem.name,
-        timestamp: new Date().toISOString()
-      }, null, 2),
-      MessageAttributes: {
-        'service': { DataType: 'String', StringValue: 'item-service' }
-      }
-    };
-
-    // Kirim notifikasi dan log hasilnya
-    const snsResponse = await sns.publish(snsParams).promise();
-    console.log('SNS Notification Sent:', {
-      MessageId: snsResponse.MessageId,
-      ItemId: deletedItem.id
-    });
-
-    res.json({ 
+    res.json({
+      success: true,
       message: 'Item deleted successfully',
-      deletedItem: deletedItem,
-      snsMessageId: snsResponse.MessageId // Tambahkan ID notifikasi ke response
+      deletedItem: data.Attributes
     });
 
   } catch (err) {
-    console.error('Error:', {
-      operation: 'delete_item',
-      error: err.message,
-      stack: err.stack
-    });
+    console.error('DynamoDB delete error:', err);
+    
+    // Error handling khusus untuk DynamoDB
+    let errorMessage = 'Failed to delete item';
+    if (err.code === 'ResourceNotFoundException') {
+      errorMessage = 'Table not found';
+    } else if (err.code === 'ConditionalCheckFailedException') {
+      errorMessage = 'Item does not exist';
+    }
+    
     res.status(500).json({ 
-      error: 'Failed to delete item',
-      details: err.message 
+      success: false,
+      error: errorMessage,
+      details: err.message
     });
   }
 });
