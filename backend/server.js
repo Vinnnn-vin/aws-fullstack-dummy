@@ -11,7 +11,7 @@ AWS.config.update({
 
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
 const TABLE_NAME = 'DummyItems';
-const SNS_TOPIC_ARN = process.env.SNS_TOPIC_ARN;
+const SNS_TOPIC_ARN = 'arn:aws:sns:us-east-1:697771866556:ItemDeletionNotifications';
 
 // CORS middleware
 app.use((req, res, next) => {
