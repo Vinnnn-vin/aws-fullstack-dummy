@@ -78,7 +78,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Function to delete item
-  function deleteItem(itemId) {
+    function deleteItem(itemId) {
     if (!confirm("Are you sure you want to delete this item?")) return;
 
     fetch(`http://3.83.52.143:3000/items/${itemId}`, {

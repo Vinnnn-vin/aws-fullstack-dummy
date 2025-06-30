@@ -11,6 +11,7 @@ AWS.config.update({
 
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
 const TABLE_NAME = 'DummyItems';
+const SNS_TOPIC_ARN = process.env.SNS_TOPIC_ARN;
 
 // CORS middleware
 app.use((req, res, next) => {
@@ -85,32 +86,101 @@ app.post('/items', async (req, res) => {
 
 // Add new endpoint for item operations
 // Perbaikan endpoint DELETE di server.js
+// app.delete('/items/:id', async (req, res) => {
+//   // Validasi ID
+//   if (!req.params.id) {
+//     return res.status(400).json({ error: 'Item ID is required' });
+//   }
+
+//   const params = {
+//     TableName: TABLE_NAME,
+//     Key: {
+//       id: req.params.id
+//     },
+//     ReturnValues: 'ALL_OLD' // Mengembalikan data yang dihapus
+//   };
+
+//   try {
+//     const data = await dynamoDB.delete(params).promise();
+//     if (!data.Attributes) {
+//       return res.status(404).json({ error: 'Item not found' });
+//     }
+//     res.json({ 
+//       message: 'Item deleted successfully',
+//       deletedItem: data.Attributes 
+//     });
+//   } catch (err) {
+//     console.error('DynamoDB error:', err);
+//     res.status(500).json({ error: 'Failed to delete item', details: err.message });
+//   }
+// });
+
 app.delete('/items/:id', async (req, res) => {
-  // Validasi ID
   if (!req.params.id) {
-    return res.status(400).json({ error: 'Item ID is required' });
+    return res.status(400).json({ 
+      success: false,
+      error: 'Item ID is required' 
+    });
   }
 
-  const params = {
-    TableName: TABLE_NAME,
-    Key: {
-      id: req.params.id
-    },
-    ReturnValues: 'ALL_OLD' // Mengembalikan data yang dihapus
-  };
-
   try {
-    const data = await dynamoDB.delete(params).promise();
-    if (!data.Attributes) {
-      return res.status(404).json({ error: 'Item not found' });
+    // 1. Cek item exist terlebih dahulu
+    const getParams = {
+      TableName: TABLE_NAME,
+      Key: { id: req.params.id }
+    };
+    
+    const existingItem = await dynamoDB.get(getParams).promise();
+    
+    if (!existingItem.Item) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Item not found' 
+      });
     }
-    res.json({ 
-      message: 'Item deleted successfully',
-      deletedItem: data.Attributes 
+
+    // 2. Hapus item
+    const deleteParams = {
+      TableName: TABLE_NAME,
+      Key: { id: req.params.id },
+      ReturnValues: 'ALL_OLD'
+    };
+    
+    const result = await dynamoDB.delete(deleteParams).promise();
+    const deletedItem = result.Attributes;
+
+    // 3. Kirim notifikasi SNS
+    if (SNS_TOPIC_ARN) {
+      const snsParams = {
+        TopicArn: SNS_TOPIC_ARN,
+        Subject: `Item Deleted: ${deletedItem.name || deletedItem.id}`,
+        Message: `Item berikut telah dihapus:\n\n` +
+                 `ID: ${deletedItem.id}\n` +
+                 `Nama: ${deletedItem.name || 'N/A'}\n` +
+                 `Deskripsi: ${deletedItem.description || 'N/A'}\n` +
+                 `Dihapus pada: ${new Date().toISOString()}\n\n` +
+                 `Detail lengkap:\n${JSON.stringify(deletedItem, null, 2)}`,
+        MessageStructure: 'string'
+      };
+
+      await sns.publish(snsParams).promise();
+      console.log('Notifikasi SNS terkirim untuk item yang dihapus');
+    }
+
+    // 4. Return response
+    res.json({
+      success: true,
+      data: deletedItem,
+      message: 'Item deleted successfully'
     });
+    
   } catch (err) {
-    console.error('DynamoDB error:', err);
-    res.status(500).json({ error: 'Failed to delete item', details: err.message });
+    console.error('Delete error:', err);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to delete item',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 });
 
