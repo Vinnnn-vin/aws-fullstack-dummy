@@ -10,111 +10,102 @@ AWS.config.update({
 });
 
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
+const sns = new AWS.SNS();
 const TABLE_NAME = 'DummyItems';
-const SNS_TOPIC_ARN = process.env.SNS_TOPIC_ARN;
+const SNS_TOPIC_ARN = 'arn:aws:sns:us-east-1:697771866556:ItemDeletionNotifications'; // Langsung di-set disini
 
-// CORS middleware
+// Enhanced CORS middleware
 app.use((req, res, next) => {
   const allowedOrigins = [
     'http://dummy-website-aws.s3-website-us-east-1.amazonaws.com',
     'http://dummy-website-alb-2063630277.us-east-1.elb.amazonaws.com'
   ];
   const origin = req.headers.origin;
+  
   if (allowedOrigins.includes(origin)) {
     res.header('Access-Control-Allow-Origin', origin);
   }
+  
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  
   next();
 });
 
 app.use(express.json());
 
-// Health check endpoint
+// Enhanced endpoints
 app.get('/', (req, res) => {
-  res.send('Backend is running');
+  res.json({
+    status: 'running',
+    service: 'AWS CRUD API',
+    sns_topic: SNS_TOPIC_ARN,
+    timestamp: new Date().toISOString()
+  });
 });
 
-// Get all items - modified for table structure
+// Get all items
 app.get('/items', async (req, res) => {
-  const params = {
-    TableName: TABLE_NAME
-  };
-
   try {
-    const data = await dynamoDB.scan(params).promise();
-    // Format data untuk tabel dengan menyertakan ID untuk operasi edit/hapus
-    const items = (data.Items || []).map(item => ({
-      id: item.id,
-      name: item.name || '',
-      description: item.description || '',
-      createdAt: item.createdAt || ''
-    }));
-    res.json(items);
+    const data = await dynamoDB.scan({ TableName: TABLE_NAME }).promise();
+    res.json({
+      success: true,
+      data: data.Items || [],
+      count: data.Count || 0
+    });
   } catch (err) {
     console.error('DynamoDB error:', err);
-    res.status(500).json({ error: 'Failed to fetch items' });
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to fetch items',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 });
 
-// Add new item - modified to return complete item data
+// Add new item
 app.post('/items', async (req, res) => {
   if (!req.body.name) {
-    return res.status(400).json({ error: 'Item name is required' });
+    return res.status(400).json({ 
+      success: false,
+      error: 'Item name is required' 
+    });
   }
 
   const newItem = {
     id: Date.now().toString(),
     name: req.body.name,
     description: req.body.description || '',
-    createdAt: new Date().toISOString()
-  };
-
-  const params = {
-    TableName: TABLE_NAME,
-    Item: newItem
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   };
 
   try {
-    await dynamoDB.put(params).promise();
-    res.status(201).json(newItem);
+    await dynamoDB.put({
+      TableName: TABLE_NAME,
+      Item: newItem
+    }).promise();
+    
+    res.status(201).json({
+      success: true,
+      data: newItem,
+      message: 'Item created successfully'
+    });
   } catch (err) {
     console.error('DynamoDB error:', err);
-    res.status(500).json({ error: 'Failed to save item' });
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to save item',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 });
 
-// Add new endpoint for item operations
-// Perbaikan endpoint DELETE di server.js
-// app.delete('/items/:id', async (req, res) => {
-//   // Validasi ID
-//   if (!req.params.id) {
-//     return res.status(400).json({ error: 'Item ID is required' });
-//   }
-
-//   const params = {
-//     TableName: TABLE_NAME,
-//     Key: {
-//       id: req.params.id
-//     },
-//     ReturnValues: 'ALL_OLD' // Mengembalikan data yang dihapus
-//   };
-
-//   try {
-//     const data = await dynamoDB.delete(params).promise();
-//     if (!data.Attributes) {
-//       return res.status(404).json({ error: 'Item not found' });
-//     }
-//     res.json({ 
-//       message: 'Item deleted successfully',
-//       deletedItem: data.Attributes 
-//     });
-//   } catch (err) {
-//     console.error('DynamoDB error:', err);
-//     res.status(500).json({ error: 'Failed to delete item', details: err.message });
-//   }
-// });
-
+// Delete item with enhanced SNS notification
 app.delete('/items/:id', async (req, res) => {
   if (!req.params.id) {
     return res.status(400).json({ 
@@ -124,77 +115,111 @@ app.delete('/items/:id', async (req, res) => {
   }
 
   try {
-    // 1. Cek item exist terlebih dahulu
-    const getParams = {
+    // 1. Verify item exists
+    const getResponse = await dynamoDB.get({
       TableName: TABLE_NAME,
       Key: { id: req.params.id }
-    };
-    
-    const existingItem = await dynamoDB.get(getParams).promise();
-    
-    if (!existingItem.Item) {
+    }).promise();
+
+    if (!getResponse.Item) {
       return res.status(404).json({ 
         success: false,
         error: 'Item not found' 
       });
     }
 
-    // 2. Hapus item
-    const deleteParams = {
+    // 2. Delete item
+    const deleteResponse = await dynamoDB.delete({
       TableName: TABLE_NAME,
       Key: { id: req.params.id },
       ReturnValues: 'ALL_OLD'
+    }).promise();
+
+    const deletedItem = deleteResponse.Attributes;
+
+    // 3. Send SNS notification (enhanced)
+    const snsParams = {
+      TopicArn: SNS_TOPIC_ARN,
+      Subject: `ITEM DELETED: ${deletedItem.name || deletedItem.id}`,
+      Message: JSON.stringify({
+        eventType: 'ITEM_DELETED',
+        timestamp: new Date().toISOString(),
+        item: deletedItem,
+        metadata: {
+          deletedBy: req.ip,
+          userAgent: req.headers['user-agent']
+        }
+      }, null, 2),
+      MessageAttributes: {
+        'event_type': {
+          DataType: 'String',
+          StringValue: 'item_deletion'
+        },
+        'severity': {
+          DataType: 'String',
+          StringValue: 'low'
+        }
+      }
     };
+
+    console.log('Attempting to send SNS notification:', JSON.stringify(snsParams, null, 2));
     
-    const result = await dynamoDB.delete(deleteParams).promise();
-    const deletedItem = result.Attributes;
+    const snsResponse = await sns.publish(snsParams).promise();
+    console.log('SNS Notification sent successfully:', snsResponse.MessageId);
 
-    // 3. Kirim notifikasi SNS
-    if (SNS_TOPIC_ARN) {
-      const snsParams = {
-        TopicArn: SNS_TOPIC_ARN,
-        Subject: `Item Deleted: ${deletedItem.name || deletedItem.id}`,
-        Message: `Item berikut telah dihapus:\n\n` +
-                 `ID: ${deletedItem.id}\n` +
-                 `Nama: ${deletedItem.name || 'N/A'}\n` +
-                 `Deskripsi: ${deletedItem.description || 'N/A'}\n` +
-                 `Dihapus pada: ${new Date().toISOString()}\n\n` +
-                 `Detail lengkap:\n${JSON.stringify(deletedItem, null, 2)}`,
-        MessageStructure: 'string'
-      };
-
-      await sns.publish(snsParams).promise();
-      console.log('Notifikasi SNS terkirim untuk item yang dihapus');
-    }
-
-    // 4. Return response
+    // 4. Return success response
     res.json({
       success: true,
       data: deletedItem,
-      message: 'Item deleted successfully'
+      message: 'Item deleted successfully',
+      snsMessageId: snsResponse.MessageId
     });
-    
+
   } catch (err) {
-    console.error('Delete error:', err);
+    console.error('Delete operation failed:', err);
+    
+    // Detailed error logging
+    const errorDetails = {
+      name: err.name,
+      message: err.message,
+      code: err.code,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+      ...(err.originalError && { originalError: err.originalError })
+    };
+
     res.status(500).json({ 
       success: false,
       error: 'Failed to delete item',
-      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+      details: errorDetails
     });
   }
 });
 
+// Health check endpoint
 app.get('/health', (req, res) => {
-  res.status(200).send('OK');
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    snsTopic: SNS_TOPIC_ARN
+  });
 });
 
-// Error handling middleware
+// Enhanced error handling
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).send('Something broke!');
+  console.error('Global error handler:', err.stack);
+  
+  res.status(500).json({
+    success: false,
+    error: 'Internal server error',
+    message: err.message,
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`SNS Topic: ${SNS_TOPIC_ARN}`);
+  console.log(`DynamoDB Table: ${TABLE_NAME}`);
 });
